@@ -6,14 +6,19 @@
   <title>منصة متابعة القراءة والتحدث</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800&display=swap" rel="stylesheet"> <script>
-  window.onerror = function (msg, src, line) {
-    document.getElementById('app').innerHTML =
-      '<div style="padding:20px;color:#b3261e;direction:ltr">' +
-      'خطأ: ' + msg + ' (السطر ' + line + ')</div>';
-  };
-</script>
+  <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
+
+  <script>
+    window.addEventListener('error', function (e) {
+      var box = document.getElementById('app');
+      if (box) {
+        box.innerHTML = '<div style="padding:20px;color:#b3261e;direction:ltr;font-family:monospace">'
+          + 'Error: ' + (e.message || 'failed to load a file')
+          + (e.lineno ? ' (line ' + e.lineno + ')' : '') + '</div>';
+      }
+    }, true);
+  </script>
 </head>
 <body>
   <header class="top">
