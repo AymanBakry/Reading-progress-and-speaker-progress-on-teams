@@ -6,7 +6,13 @@
   <title>منصة متابعة القراءة والتحدث</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800&display=swap" rel="stylesheet"> <script>
+  window.onerror = function (msg, src, line) {
+    document.getElementById('app').innerHTML =
+      '<div style="padding:20px;color:#b3261e;direction:ltr">' +
+      'خطأ: ' + msg + ' (السطر ' + line + ')</div>';
+  };
+</script>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
