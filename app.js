@@ -1,10 +1,16 @@
 /* ===================== الإعدادات ===================== */
 const CONFIG = {
-  DRIVE_FOLDER_ID: '1BRgmtEz_-uOpx5tleGPGsjdGlsmwVtyL',
   ALLOW_FILE_MANAGEMENT: false,   // true = السماح بإضافة وحذف الملفات الرئيسية
-  MAX_IMAGE_SIDE: 1600            // أكبر بُعد للصورة بالبكسل (للتوفير في المساحة)
+  MAX_IMAGE_SIDE: 1600
 };
-const DRIVE_FOLDER_URL = `https://drive.google.com/drive/folders/${CONFIG.DRIVE_FOLDER_ID}?usp=sharing`;
+const SCHOOL = 'مدرسة البلاد القديم الابتدائية الإعدادية للبنين';
+const STAFF = [
+  {role:'مدير المدرسة',  name:'محمد إبراهيم', c:'#CE1126'},
+  {role:'المدير المساعد', name:'عبدالله دليم', c:'#0b6f7e'},
+  {role:'المعلم الأول',   name:'عباس كاظم',    c:'#9a6b00'},
+  {role:'المعلم',         name:'أيمن بكري',    c:'#1d3a8a'}
+];
+const ACT_COLORS = ['#CE1126','#0b6f7e','#9a6b00','#1d3a8a','#237a4b','#7b3fa0','#c2410c','#0e7490','#7c4a2d','#a3185a'];
 const STATE_KEY = 'platform-state-v2';
 
 /* ===================== أدوات مساعدة ===================== */
@@ -32,8 +38,8 @@ const makeActs = (prefix, titles) => titles.map((t, i) => ({
 }));
 function defaultState(){
   return {files:[
-    {id:uid(), name:'Reading Progress', type:'reading', driveUrl:DRIVE_FOLDER_URL, activities:makeActs('Reading progress', READING)},
-    {id:uid(), name:'Speaking Progress on Teams', type:'speaking', driveUrl:DRIVE_FOLDER_URL, activities:makeActs('Speaker progress', SPEAKING)}
+    {id:uid(), name:'Reading Progress', type:'reading', activities:makeActs('Reading progress', READING)},
+    {id:uid(), name:'Speaking Progress on Teams', type:'speaking', activities:makeActs('Speaker progress', SPEAKING)}
   ]};
 }
 
@@ -83,17 +89,38 @@ async function shrinkImage(file){
   return file;
 }
 
-/* ===================== التوجيه ===================== */
+/* ===================== التوجيه والتنقل ===================== */
 const app = $('#app');
 const findFile = id => state.files.find(f => f.id === id);
 let objectUrls = [];
 
+function sequence(){
+  const s = ['#/'];
+  state.files.forEach(f => {
+    s.push(`#/file/${f.id}`);
+    f.activities.forEach(a => s.push(`#/file/${f.id}/act/${a.id}`));
+  });
+  return s;
+}
+function pagerHtml(cls){
+  const seq = sequence();
+  const cur = location.hash && location.hash !== '#' ? location.hash : '#/';
+  const i = Math.max(0, seq.indexOf(cur));
+  const prev = seq[i - 1], next = seq[i + 1];
+  return `<div class="pager ${cls}">
+    ${prev ? `<a class="btn nav" href="${prev}">→ الصفحة السابقة</a>` : '<span></span>'}
+    <span class="pos">${i + 1} / ${seq.length}</span>
+    ${next ? `<a class="btn nav" href="${next}">الصفحة التالية ←</a>` : '<span></span>'}
+  </div>`;
+}
 function route(){
   objectUrls.forEach(u => URL.revokeObjectURL(u)); objectUrls = [];
   const [, page, fid, , aid] = location.hash.split('/');
   window.scrollTo(0, 0);
-  if (page === 'file' && findFile(fid)) return aid ? renderActivity(fid, aid) : renderFile(fid);
-  renderHome();
+  if (page === 'file' && findFile(fid)) aid ? renderActivity(fid, aid) : renderFile(fid);
+  else renderHome();
+  app.insertAdjacentHTML('afterbegin', pagerHtml('top'));
+  app.insertAdjacentHTML('beforeend', pagerHtml('bottom'));
 }
 window.addEventListener('hashchange', route);
 
@@ -101,19 +128,22 @@ window.addEventListener('hashchange', route);
 function renderHome(){
   const manage = CONFIG.ALLOW_FILE_MANAGEMENT;
   app.innerHTML = `
-    <h1>ملفات المتابعة</h1>
-    <p class="sub">افتح الملف لإضافة الأنشطة أو حذفها، ثم افتح النشاط لإرفاق الصور وملفات PDF.</p>
-    <div class="row">
-      ${manage ? '<button class="btn" id="addFile">إضافة ملف جديد</button>' : ''}
-      <a class="btn ghost" href="${DRIVE_FOLDER_URL}" target="_blank" rel="noopener">فتح المجلد الرئيسي في جوجل درايف</a>
-    </div>
+    <section class="hero">
+      <h1>${SCHOOL}</h1>
+      <div class="staff">
+        ${STAFF.map(p => `<div class="person" style="--c:${p.c}"><small>${p.role}</small><strong>${esc(p.name)}</strong></div>`).join('')}
+      </div>
+    </section>
+    ${manage ? '<div class="row"><button class="btn" id="addFile">إضافة ملف جديد</button></div>' : ''}
     <div class="grid">
       ${state.files.map(f => {
         const done = f.activities.filter(a => a.done).length;
+        const pct = f.activities.length ? Math.round(done / f.activities.length * 100) : 0;
         return `
         <article class="file" data-type="${f.type}">
           <h2>${esc(f.name)}</h2>
-          <div class="count">${f.activities.length} نشاط — مكتمل ${done}</div>
+          <div>${f.activities.length} نشاط — مكتمل ${done}</div>
+          <div class="bar"><i style="width:${pct}%"></i></div>
           <div class="actions">
             <a class="btn" href="#/file/${f.id}">فتح الملف</a>
             ${manage ? `<button class="btn danger" data-del-file="${f.id}">حذف</button>` : ''}
@@ -127,30 +157,29 @@ function renderHome(){
   }
 }
 
-/* ===================== صفحة الملف (قائمة الأنشطة) ===================== */
+/* ===================== صفحة الملف ===================== */
 function renderFile(fid){
   const f = findFile(fid);
   app.innerHTML = `
-    <div class="crumbs"><a href="#/">الملفات</a> / ${esc(f.name)}</div>
+    <div class="crumbs"><a href="#/">الرئيسية</a> / ${esc(f.name)}</div>
     <h1>${esc(f.name)}</h1>
     <p class="sub" id="progress"></p>
     <div class="row">
       <button class="btn" id="addAct">إضافة نشاط</button>
-      <a class="btn ghost" href="${esc(f.driveUrl)}" target="_blank" rel="noopener">فتح في جوجل درايف</a>
-      <button class="btn ghost" id="toggleDrive">عرض مجلد درايف هنا</button>
+      <input type="text" id="search" placeholder="ابحث في الأنشطة..." aria-label="بحث" style="max-width:260px;margin:0">
     </div>
-    <div class="row"><input type="text" id="search" placeholder="ابحث في الأنشطة..." aria-label="بحث"></div>
-    <div id="driveBox"></div>
     <div class="list" id="list"></div>`;
 
   const draw = () => {
     const q = $('#search').value.trim().toLowerCase();
     const done = f.activities.filter(a => a.done).length;
-    $('#progress').textContent = `${TYPES[f.type]} — أنجزت ${done} من ${f.activities.length}`;
-    const items = f.activities.filter(a => !q || (a.title + ' ' + a.notes).toLowerCase().includes(q));
-    $('#list').innerHTML = items.map(a => `
-      <div class="act">
-        <label style="display:flex;gap:12px;align-items:center;flex:1;cursor:pointer">
+    $('#progress').textContent = `${TYPES[f.type] || ''} — أنجزت ${done} من ${f.activities.length}`;
+    const items = f.activities.map((a, i) => ({a, i}))
+      .filter(({a}) => !q || (a.title + ' ' + a.notes).toLowerCase().includes(q));
+    $('#list').innerHTML = items.map(({a, i}) => `
+      <div class="act" style="--c:${ACT_COLORS[i % ACT_COLORS.length]}">
+        <label style="display:flex;gap:12px;align-items:center;flex:1;cursor:pointer;min-width:220px">
+          <span class="num">${i + 1}</span>
           <input type="checkbox" data-done="${a.id}" ${a.done ? 'checked' : ''} aria-label="مكتمل">
           <span>
             <strong>${esc(a.title)}</strong>
@@ -168,12 +197,6 @@ function renderFile(fid){
 
   $('#search').oninput = draw;
   $('#addAct').onclick = () => openActivityForm(fid);
-  $('#toggleDrive').onclick = () => {
-    const box = $('#driveBox');
-    box.innerHTML = box.innerHTML ? '' :
-      `<iframe class="drive" src="https://drive.google.com/embeddedfolderview?id=${CONFIG.DRIVE_FOLDER_ID}#list"></iframe>
-       <p class="meta">إذا ظهرت الصفحة فارغة فتأكد أن المجلد مشارك لـ «أي شخص لديه الرابط».</p>`;
-  };
   $('#list').onclick = e => {
     const del = e.target.closest('[data-del-act]');
     if (del) deleteActivity(fid, del.dataset.delAct);
@@ -181,29 +204,30 @@ function renderFile(fid){
   $('#list').onchange = e => {
     const cb = e.target.closest('[data-done]');
     if (!cb) return;
-    const a = f.activities.find(x => x.id === cb.dataset.done);
-    a.done = cb.checked; save(); draw();
+    f.activities.find(x => x.id === cb.dataset.done).done = cb.checked;
+    save(); draw();
   };
 }
 
 /* ===================== صفحة النشاط ===================== */
 async function renderActivity(fid, aid){
-  const f = findFile(fid), a = f.activities.find(x => x.id === aid);
+  const f = findFile(fid), idx = f.activities.findIndex(x => x.id === aid), a = f.activities[idx];
   if (!a) return renderFile(fid);
+  const color = ACT_COLORS[idx % ACT_COLORS.length];
   app.innerHTML = `
-    <div class="crumbs"><a href="#/">الملفات</a> / <a href="#/file/${f.id}">${esc(f.name)}</a> / ${esc(a.title)}</div>
-    <h1>${esc(a.title)}</h1>
+    <div class="crumbs"><a href="#/">الرئيسية</a> / <a href="#/file/${f.id}">${esc(f.name)}</a> / ${esc(a.title)}</div>
+    <h1 style="color:${color}">${esc(a.title)}</h1>
     <p class="sub">${esc(a.date || '')} ${a.done ? '— مكتمل' : ''}</p>
-    <div class="card">
+    <div class="card" style="--c:${color}">
       <h2>الوصف والملاحظات</h2>
       <div class="notes">${esc(a.notes) || '<span class="meta">لا توجد ملاحظات.</span>'}</div>
       ${a.link ? `<p><a href="${esc(a.link)}" target="_blank" rel="noopener">فتح رابط النشاط</a></p>` : ''}
       <button class="btn ghost" id="editAct">تعديل</button>
     </div>
-    <div class="card">
+    <div class="card" style="--c:${color}">
       <h2>المرفقات (صور و PDF)</h2>
       <div class="row">
-        <label class="btn" for="upl">إضافة صور أو PDF</label>
+        <label class="btn" for="upl" style="background:${color};border-color:${color}">إضافة صور أو PDF</label>
         <input type="file" id="upl" accept="image/*,application/pdf" multiple hidden>
       </div>
       <div class="thumbs" id="thumbs"></div>
@@ -222,7 +246,7 @@ async function renderActivity(fid, aid){
         a.attachments.push({id, name:raw.name.replace(/\.\w+$/, '') + (file.name.match(/\.\w+$/) || [''])[0], mime:file.type});
       } catch { toast('تعذر حفظ ' + raw.name + ' (المساحة ممتلئة؟)'); }
     }
-    save(); toast('تمت الإضافة'); renderActivity(fid, aid);
+    save(); toast('تمت الإضافة'); route();
   };
 
   const box = $('#thumbs');
@@ -246,7 +270,7 @@ async function renderActivity(fid, aid){
       if (!confirm('حذف هذا المرفق؟')) return;
       try { await delBlob(att.id); } catch {}
       a.attachments = a.attachments.filter(x => x.id !== att.id);
-      save(); renderActivity(fid, aid);
+      save(); route();
     };
     box.appendChild(el);
   }
@@ -263,12 +287,11 @@ function openFileForm(){
   showDialog(`<form method="dialog" id="ff"><h2>ملف جديد</h2>
     <label class="f">اسم الملف<input type="text" name="name" required></label>
     <label class="f">النوع<select name="type">${Object.entries(TYPES).map(([k,v]) => `<option value="${k}">${v}</option>`).join('')}</select></label>
-    <label class="f">رابط جوجل درايف (اختياري)<input type="url" name="drive" value="${DRIVE_FOLDER_URL}"></label>
     <div class="dlgbtns"><button class="btn" value="ok">حفظ</button><button class="btn ghost" type="button" data-close>إلغاء</button></div></form>`);
   $('#ff').onsubmit = e => {
     const d = new FormData(e.target);
-    state.files.push({id:uid(), name:d.get('name').trim(), type:d.get('type'), driveUrl:d.get('drive') || DRIVE_FOLDER_URL, activities:[]});
-    save(); renderHome(); toast('تمت إضافة الملف');
+    state.files.push({id:uid(), name:d.get('name').trim(), type:d.get('type'), activities:[]});
+    save(); route(); toast('تمت إضافة الملف');
   };
 }
 function openActivityForm(fid, existing){
@@ -276,7 +299,7 @@ function openActivityForm(fid, existing){
   showDialog(`<form method="dialog" id="af"><h2>${existing ? 'تعديل النشاط' : 'نشاط جديد'}</h2>
     <label class="f">عنوان النشاط<input type="text" name="title" required value="${esc(a.title)}"></label>
     <label class="f">التاريخ<input type="date" name="date" value="${esc(a.date)}"></label>
-    <label class="f">رابط (Teams أو درايف) اختياري<input type="url" name="link" value="${esc(a.link)}"></label>
+    <label class="f">رابط (Teams أو غيره) اختياري<input type="url" name="link" value="${esc(a.link)}"></label>
     <label class="f">ملاحظات<textarea name="notes">${esc(a.notes)}</textarea></label>
     <div class="dlgbtns"><button class="btn" value="ok">حفظ</button><button class="btn ghost" type="button" data-close>إلغاء</button></div></form>`);
   $('#af').onsubmit = e => {
@@ -294,7 +317,7 @@ async function deleteActivity(fid, aid){
   if (!confirm(`حذف النشاط «${a.title}» وكل مرفقاته؟`)) return;
   for (const att of a.attachments) { try { await delBlob(att.id); } catch {} }
   f.activities = f.activities.filter(x => x.id !== aid);
-  save(); renderFile(fid); toast('تم الحذف');
+  save(); route(); toast('تم الحذف');
 }
 async function deleteFile(fid){
   if (!CONFIG.ALLOW_FILE_MANAGEMENT) return;
@@ -302,7 +325,7 @@ async function deleteFile(fid){
   if (!confirm(`حذف الملف «${f.name}» بكل أنشطته؟`)) return;
   for (const a of f.activities) for (const att of a.attachments) { try { await delBlob(att.id); } catch {} }
   state.files = state.files.filter(x => x.id !== fid);
-  save(); renderHome(); toast('تم الحذف');
+  save(); route(); toast('تم الحذف');
 }
 
 /* ===================== نسخة احتياطية ===================== */
