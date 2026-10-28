@@ -1,1 +1,245 @@
-app.js
+/* ===== الإعدادات ===== */
+const DRIVE_FOLDER_ID = '1BRgmtEz_-uOpx5tleGPGsjdGlsmwVtyL';
+const DRIVE_FOLDER_URL = `https://drive.google.com/drive/folders/${DRIVE_FOLDER_ID}?usp=sharing`;
+const STATE_KEY = 'platform-state-v2';
+
+/* ===== أدوات مساعدة ===== */
+const $ = (s, r = document) => r.querySelector(s);
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function toast(msg){const t=$('#toast');t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2200);}
+const TYPES = {reading:'Reading Progress', speaking:'Speaking Progress on Teams', other:'أخرى'};
+
+/* ===== الأنشطة الجاهزة ===== */
+const READING = [
+  'sports','health','My Family and Friends','The Weather and Seasons','Healthy Food vs. Junk Food',
+  'My Favorite School Subject','Bahraini Traditional Food','Ramadan in Bahrain',"Mothers' Day",'Bahraini Landmarks'
+];
+const SPEAKING = [
+  'A place I visited and liked so much','My Daily Routine','Festivals','Bahrain National Day','Describe Your house',
+  'My favourite sport','My favourite hobby','A Trip to the Zoo or Park','A Family Day at the Beach','Four seasons of the year'
+];
+const makeActs = (prefix, titles) => titles.map((t, i) => ({
+  id: uid(), title: `${prefix} ${i + 1}: ${t}`, date: '', notes: '', link: '', attachments: []
+}));
+function defaultState(){
+  return {files:[
+    {id:uid(), name:'Reading Progress', type:'reading', driveUrl:DRIVE_FOLDER_URL, activities:makeActs('Reading progress', READING)},
+    {id:uid(), name:'Speaking Progress on Teams', type:'speaking', driveUrl:DRIVE_FOLDER_URL, activities:makeActs('Speaker progress', SPEAKING)}
+  ]};
+}
+
+/* ===== الحالة (localStorage) ===== */
+let state;
+try { state = JSON.parse(localStorage.getItem(STATE_KEY)) || defaultState(); } catch { state = defaultState(); }
+const save = () => localStorage.setItem(STATE_KEY, JSON.stringify(state));
+
+/* ===== قاعدة الملفات (IndexedDB) للصور و PDF ===== */
+const dbp = new Promise((res, rej) => {
+  const r = indexedDB.open('platform-files', 1);
+  r.onupgradeneeded = () => r.result.createObjectStore('blobs');
+  r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
+});
+async function tx(mode, fn){
+  const db = await dbp;
+  return new Promise((res, rej) => {
+    const t = db.transaction('blobs', mode); const out = fn(t.objectStore('blobs'));
+    t.oncomplete = () => res(out.result); t.onerror = () => rej(t.error);
+  });
+}
+const putBlob = (id, blob) => tx('readwrite', s => s.put(blob, id));
+const getBlob = id => tx('readonly', s => s.get(id));
+const delBlob = id => tx('readwrite', s => s.delete(id));
+
+/* ===== الصفحات ===== */
+const app = $('#app');
+const findFile = id => state.files.find(f => f.id === id);
+
+function route(){
+  const [, page, fid, , aid] = location.hash.split('/');
+  if (page === 'file' && findFile(fid)) return aid ? renderActivity(fid, aid) : renderFile(fid);
+  renderHome();
+}
+window.addEventListener('hashchange', route);
+
+function renderHome(){
+  app.innerHTML = `
+    <h1>ملفات المتابعة</h1>
+    <p class="sub">افتح الملف لإضافة الأنشطة أو حذفها، ثم افتح النشاط لإرفاق الصور وملفات PDF.</p>
+    <div class="row">
+      <button class="btn" id="addFile">إضافة ملف جديد</button>
+      <a class="btn ghost" href="${DRIVE_FOLDER_URL}" target="_blank" rel="noopener">فتح المجلد الرئيسي في جوجل درايف</a>
+    </div>
+    <div class="grid">
+      ${state.files.map(f => `
+        <article class="file" data-type="${f.type}">
+          <h2>${esc(f.name)}</h2>
+          <div class="count">${f.activities.length} نشاط</div>
+          <div class="actions">
+            <a class="btn" href="#/file/${f.id}">فتح الملف</a>
+            <button class="btn danger" data-del-file="${f.id}">حذف</button>
+          </div>
+        </article>`).join('') || '<div class="empty">لا توجد ملفات بعد. أضف أول ملف.</div>'}
+    </div>`;
+  $('#addFile').onclick = openFileForm;
+  app.querySelectorAll('[data-del-file]').forEach(b => b.onclick = () => deleteFile(b.dataset.delFile));
+}
+
+function renderFile(fid){
+  const f = findFile(fid);
+  app.innerHTML = `
+    <div class="crumbs"><a href="#/">الملفات</a> / ${esc(f.name)}</div>
+    <h1>${esc(f.name)}</h1>
+    <p class="sub">${TYPES[f.type]}</p>
+    <div class="row">
+      <button class="btn" id="addAct">إضافة نشاط</button>
+      <a class="btn ghost" href="${esc(f.driveUrl)}" target="_blank" rel="noopener">فتح في جوجل درايف</a>
+      <button class="btn ghost" id="toggleDrive">عرض مجلد درايف هنا</button>
+    </div>
+    <div id="driveBox"></div>
+    <div class="list">
+      ${f.activities.map(a => `
+        <div class="act">
+          <div>
+            <strong>${esc(a.title)}</strong>
+            <div class="meta">${esc(a.date || '')} ${a.attachments.length ? '— ' + a.attachments.length + ' مرفق' : ''}</div>
+          </div>
+          <div class="row" style="margin:0">
+            <a class="btn" href="#/file/${f.id}/act/${a.id}">فتح</a>
+            <button class="btn danger" data-del-act="${a.id}">حذف</button>
+          </div>
+        </div>`).join('') || '<div class="empty">لا توجد أنشطة في هذا الملف. اضغط «إضافة نشاط».</div>'}
+    </div>`;
+  $('#addAct').onclick = () => openActivityForm(fid);
+  $('#toggleDrive').onclick = () => {
+    const box = $('#driveBox');
+    box.innerHTML = box.innerHTML ? '' :
+      `<iframe class="drive" src="https://drive.google.com/embeddedfolderview?id=${DRIVE_FOLDER_ID}#list"></iframe>
+       <p class="meta">إذا ظهرت الصفحة فارغة فتأكد أن المجلد مشارك لـ «أي شخص لديه الرابط».</p>`;
+  };
+  app.querySelectorAll('[data-del-act]').forEach(b => b.onclick = () => deleteActivity(fid, b.dataset.delAct));
+}
+
+async function renderActivity(fid, aid){
+  const f = findFile(fid), a = f.activities.find(x => x.id === aid);
+  if (!a) return renderFile(fid);
+  app.innerHTML = `
+    <div class="crumbs"><a href="#/">الملفات</a> / <a href="#/file/${f.id}">${esc(f.name)}</a> / ${esc(a.title)}</div>
+    <h1>${esc(a.title)}</h1>
+    <p class="sub">${esc(a.date || '')}</p>
+    <div class="card">
+      <h2>الوصف والملاحظات</h2>
+      <div class="notes">${esc(a.notes) || '<span class="meta">لا توجد ملاحظات.</span>'}</div>
+      ${a.link ? `<p><a href="${esc(a.link)}" target="_blank" rel="noopener">فتح رابط النشاط</a></p>` : ''}
+      <button class="btn ghost" id="editAct">تعديل</button>
+    </div>
+    <div class="card">
+      <h2>المرفقات (صور و PDF)</h2>
+      <div class="row">
+        <label class="btn" for="upl">إضافة صور أو PDF</label>
+        <input type="file" id="upl" accept="image/*,application/pdf" multiple hidden>
+      </div>
+      <div class="thumbs" id="thumbs"></div>
+    </div>`;
+  $('#editAct').onclick = () => openActivityForm(fid, a);
+  $('#upl').onchange = async e => {
+    for (const file of e.target.files){
+      const id = uid();
+      await putBlob(id, file);
+      a.attachments.push({id, name:file.name, mime:file.type});
+    }
+    save(); toast('تمت الإضافة'); renderActivity(fid, aid);
+  };
+  const box = $('#thumbs');
+  if (!a.attachments.length) box.innerHTML = '<div class="empty" style="grid-column:1/-1">لا توجد مرفقات.</div>';
+  for (const att of a.attachments){
+    const blob = await getBlob(att.id);
+    const url = blob ? URL.createObjectURL(blob) : '';
+    const isPdf = att.mime === 'application/pdf';
+    const el = document.createElement('div'); el.className = 'thumb';
+    el.innerHTML = (isPdf ? '<div class="pdf">PDF</div>' : `<img src="${url}" alt="${esc(att.name)}">`) +
+      `<div class="cap"><span title="${esc(att.name)}">${esc(att.name)}</span><button>حذف</button></div>`;
+    el.firstElementChild.onclick = () => isPdf ? window.open(url, '_blank') : openImage(url, att.name);
+    el.querySelector('button').onclick = async () => {
+      if (!confirm('حذف هذا المرفق؟')) return;
+      await delBlob(att.id); a.attachments = a.attachments.filter(x => x.id !== att.id);
+      save(); renderActivity(fid, aid);
+    };
+    box.appendChild(el);
+  }
+}
+
+/* ===== النوافذ ===== */
+const dlg = $('#dlg');
+function showDialog(html, wide){ dlg.className = wide ? 'wide' : ''; dlg.innerHTML = html; dlg.showModal(); }
+function openImage(url, name){
+  showDialog(`<img class="full" src="${url}" alt="${esc(name)}"><div class="dlgbtns"><button class="btn ghost" onclick="dlg.close()">إغلاق</button></div>`, true);
+}
+function openFileForm(){
+  showDialog(`<form method="dialog" id="ff"><h2>ملف جديد</h2>
+    <label class="f">اسم الملف<input type="text" name="name" required></label>
+    <label class="f">النوع<select name="type">${Object.entries(TYPES).map(([k,v])=>`<option value="${k}">${v}</option>`).join('')}</select></label>
+    <label class="f">رابط جوجل درايف (اختياري)<input type="url" name="drive" value="${DRIVE_FOLDER_URL}"></label>
+    <div class="dlgbtns"><button class="btn" value="ok">حفظ</button><button class="btn ghost" type="button" onclick="dlg.close()">إلغاء</button></div></form>`);
+  $('#ff').onsubmit = e => {
+    const d = new FormData(e.target);
+    state.files.push({id:uid(), name:d.get('name').trim(), type:d.get('type'), driveUrl:d.get('drive') || DRIVE_FOLDER_URL, activities:[]});
+    save(); renderHome(); toast('تمت إضافة الملف');
+  };
+}
+function openActivityForm(fid, existing){
+  const a = existing || {title:'', date:new Date().toISOString().slice(0,10), notes:'', link:''};
+  showDialog(`<form method="dialog" id="af"><h2>${existing ? 'تعديل النشاط' : 'نشاط جديد'}</h2>
+    <label class="f">عنوان النشاط<input type="text" name="title" required value="${esc(a.title)}"></label>
+    <label class="f">التاريخ<input type="date" name="date" value="${esc(a.date)}"></label>
+    <label class="f">رابط (Teams أو درايف) اختياري<input type="url" name="link" value="${esc(a.link)}"></label>
+    <label class="f">ملاحظات<textarea name="notes">${esc(a.notes)}</textarea></label>
+    <div class="dlgbtns"><button class="btn" value="ok">حفظ</button><button class="btn ghost" type="button" onclick="dlg.close()">إلغاء</button></div></form>`);
+  $('#af').onsubmit = e => {
+    const d = new FormData(e.target), f = findFile(fid);
+    const data = {title:d.get('title').trim(), date:d.get('date'), link:d.get('link'), notes:d.get('notes')};
+    if (existing) Object.assign(existing, data);
+    else f.activities.push({id:uid(), attachments:[], ...data});
+    save(); route(); toast('تم الحفظ');
+  };
+}
+
+/* ===== الحذف ===== */
+async function deleteActivity(fid, aid){
+  const f = findFile(fid), a = f.activities.find(x => x.id === aid);
+  if (!confirm(`حذف النشاط «${a.title}» وكل مرفقاته؟`)) return;
+  for (const att of a.attachments) await delBlob(att.id);
+  f.activities = f.activities.filter(x => x.id !== aid);
+  save(); renderFile(fid); toast('تم الحذف');
+}
+async function deleteFile(fid){
+  const f = findFile(fid);
+  if (!confirm(`حذف الملف «${f.name}» بكل أنشطته؟`)) return;
+  for (const a of f.activities) for (const att of a.attachments) await delBlob(att.id);
+  state.files = state.files.filter(x => x.id !== fid);
+  save(); renderHome(); toast('تم الحذف');
+}
+
+/* ===== نسخة احتياطية ===== */
+const toDataURL = b => new Promise(r => { const fr = new FileReader(); fr.onload = () => r(fr.result); fr.readAsDataURL(b); });
+$('#btnExport').onclick = async () => {
+  const blobs = {};
+  for (const f of state.files) for (const a of f.activities) for (const att of a.attachments){
+    const b = await getBlob(att.id); if (b) blobs[att.id] = await toDataURL(b);
+  }
+  const out = new Blob([JSON.stringify({state, blobs})], {type:'application/json'});
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(out); link.download = 'platform-backup.json'; link.click();
+  toast('تم حفظ النسخة الاحتياطية');
+};
+$('#importInput').onchange = async e => {
+  const file = e.target.files[0]; if (!file) return;
+  try {
+    const data = JSON.parse(await file.text());
+    for (const [id, url] of Object.entries(data.blobs || {})) await putBlob(id, await (await fetch(url)).blob());
+    state = data.state; save(); route(); toast('تم استرجاع النسخة');
+  } catch { toast('الملف غير صالح'); }
+  e.target.value = '';
+};
+
+route();
