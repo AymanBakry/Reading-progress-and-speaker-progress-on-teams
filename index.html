@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>منصة متابعة القراءة والتحدث</title>
+  <title>مدرسة البلاد القديم - متابعة القراءة والتحدث</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800&display=swap" rel="stylesheet">
@@ -22,13 +22,19 @@
 </head>
 <body>
   <header class="top">
-    <a class="brand" href="#/">متابعة القراءة والتحدث</a>
-    <nav class="tools">
-      <button class="btn ghost" id="btnExport">حفظ نسخة احتياطية</button>
-      <label class="btn ghost" for="importInput">استرجاع نسخة</label>
-      <input type="file" id="importInput" accept="application/json" hidden>
-    </nav>
+    <div class="top-in">
+      <a class="brand" href="#/">
+        <span class="school">مدرسة البلاد القديم الابتدائية الإعدادية للبنين</span>
+        <span class="tag">متابعة القراءة والتحدث</span>
+      </a>
+      <nav class="tools">
+        <button class="btn light" id="btnExport">حفظ نسخة احتياطية</button>
+        <label class="btn light" for="importInput">استرجاع نسخة</label>
+        <input type="file" id="importInput" accept="application/json" hidden>
+      </nav>
+    </div>
   </header>
+  <div class="zig" aria-hidden="true"></div>
 
   <main id="app"></main>
 
