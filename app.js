@@ -1,8 +1,11 @@
 /* ===================== الإعدادات ===================== */
 const CONFIG = {
-  ALLOW_FILE_MANAGEMENT: false,   // true = السماح بإضافة وحذف الملفات الرئيسية
+  SUPABASE_URL: 'PASTE_PROJECT_URL_HERE',
+  SUPABASE_KEY: 'PASTE_PUBLIC_KEY_HERE',
+  ALLOW_FILE_MANAGEMENT: false,   // true = السماح للمعلم بإضافة وحذف الملفات الرئيسية
   MAX_IMAGE_SIDE: 1600
 };
+const BUCKET = 'attachments';
 const SCHOOL = 'مدرسة البلاد القديم الابتدائية الإعدادية للبنين';
 const STAFF = [
   {role:'مدير المدرسة',  name:'محمد إبراهيم', c:'#CE1126'},
@@ -11,7 +14,7 @@ const STAFF = [
   {role:'المعلم',         name:'أيمن بكري',    c:'#1d3a8a'}
 ];
 const ACT_COLORS = ['#CE1126','#0b6f7e','#9a6b00','#1d3a8a','#237a4b','#7b3fa0','#c2410c','#0e7490','#7c4a2d','#a3185a'];
-const STATE_KEY = 'platform-state-v2';
+const TYPES = {reading:'Reading Progress', speaking:'Speaking Progress on Teams', other:'أخرى'};
 
 /* ===================== أدوات مساعدة ===================== */
 const $ = (s, r = document) => r.querySelector(s);
@@ -20,9 +23,8 @@ const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt
 let toastTimer;
 function toast(msg){
   const t = $('#toast'); t.textContent = msg; t.classList.add('show');
-  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), 2400);
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), 2800);
 }
-const TYPES = {reading:'Reading Progress', speaking:'Speaking Progress on Teams', other:'أخرى'};
 
 /* ===================== الأنشطة الجاهزة ===================== */
 const READING = [
@@ -33,46 +35,36 @@ const SPEAKING = [
   'A place I visited and liked so much','My Daily Routine','Festivals','Bahrain National Day','Describe Your house',
   'My favourite sport','My favourite hobby','A Trip to the Zoo or Park','A Family Day at the Beach','Four seasons of the year'
 ];
-const makeActs = (prefix, titles) => titles.map((t, i) => ({
-  id: uid(), title: `${prefix} ${i + 1}: ${t}`, date: '', notes: '', link: '', done: false, attachments: []
+const makeActs = (key, prefix, titles) => titles.map((t, i) => ({
+  id: `${key}-${i + 1}`, title: `${prefix} ${i + 1}: ${t}`, date: '', notes: '', link: '', done: false, attachments: []
 }));
 function defaultState(){
   return {files:[
-    {id:uid(), name:'Reading Progress', type:'reading', activities:makeActs('Reading progress', READING)},
-    {id:uid(), name:'Speaking Progress on Teams', type:'speaking', activities:makeActs('Speaker progress', SPEAKING)}
+    {id:'reading',  name:'Reading Progress',          type:'reading',  activities:makeActs('r', 'Reading progress', READING)},
+    {id:'speaking', name:'Speaking Progress on Teams', type:'speaking', activities:makeActs('s', 'Speaker progress', SPEAKING)}
   ]};
 }
 
-/* ===================== الحالة (localStorage) ===================== */
-let state;
-try { state = JSON.parse(localStorage.getItem(STATE_KEY)) || defaultState(); } catch { state = defaultState(); }
-function save(){
-  try { localStorage.setItem(STATE_KEY, JSON.stringify(state)); return true; }
-  catch { toast('تعذر الحفظ: مساحة المتصفح ممتلئة'); return false; }
-}
-if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
+/* ===================== الاتصال بـ Supabase ===================== */
+const app = $('#app');
+let sb = null, state = defaultState(), isAdmin = false, rowExists = false, ready = false;
+try { sb = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_KEY); } catch (e) { sb = null; }
 
-/* ===================== الملفات (IndexedDB) ===================== */
-const dbp = new Promise((res, rej) => {
-  const r = indexedDB.open('platform-files', 1);
-  r.onupgradeneeded = () => r.result.createObjectStore('blobs');
-  r.onsuccess = () => res(r.result);
-  r.onerror = () => rej(r.error);
-});
-async function tx(mode, fn){
-  const db = await dbp;
-  return new Promise((res, rej) => {
-    const t = db.transaction('blobs', mode);
-    const out = fn(t.objectStore('blobs'));
-    t.oncomplete = () => res(out.result);
-    t.onerror = () => rej(t.error);
-    t.onabort = () => rej(t.error);
-  });
+async function loadState(){
+  const {data, error} = await sb.from('app_state').select('data').eq('id', 1).maybeSingle();
+  if (error) throw error;
+  rowExists = !!data;
+  state = (data && data.data && Array.isArray(data.data.files)) ? data.data : defaultState();
 }
-const putBlob = (id, blob) => tx('readwrite', s => s.put(blob, id));
-const getBlob = id => tx('readonly', s => s.get(id));
-const delBlob = id => tx('readwrite', s => s.delete(id));
+async function save(){
+  if (!isAdmin) return false;
+  const {error} = await sb.from('app_state').upsert({id:1, data:state, updated_at:new Date().toISOString()});
+  if (error){ toast('تعذر الحفظ: ' + error.message); return false; }
+  rowExists = true; return true;
+}
+function setAuthUI(){ $('#btnAuth').textContent = isAdmin ? 'خروج المعلم' : 'دخول المعلم'; }
 
+/* ===================== الصور ===================== */
 async function shrinkImage(file){
   if (!file.type.startsWith('image/') || /gif|svg/.test(file.type)) return file;
   try {
@@ -90,9 +82,7 @@ async function shrinkImage(file){
 }
 
 /* ===================== التوجيه والتنقل ===================== */
-const app = $('#app');
 const findFile = id => state.files.find(f => f.id === id);
-let objectUrls = [];
 
 function sequence(){
   const s = ['#/'];
@@ -114,7 +104,7 @@ function pagerHtml(cls){
   </div>`;
 }
 function route(){
-  objectUrls.forEach(u => URL.revokeObjectURL(u)); objectUrls = [];
+  if (!ready) return;
   const [, page, fid, , aid] = location.hash.split('/');
   window.scrollTo(0, 0);
   if (page === 'file' && findFile(fid)) aid ? renderActivity(fid, aid) : renderFile(fid);
@@ -126,7 +116,7 @@ window.addEventListener('hashchange', route);
 
 /* ===================== الصفحة الرئيسية ===================== */
 function renderHome(){
-  const manage = CONFIG.ALLOW_FILE_MANAGEMENT;
+  const manage = CONFIG.ALLOW_FILE_MANAGEMENT && isAdmin;
   app.innerHTML = `
     <section class="hero">
       <h1>${SCHOOL}</h1>
@@ -165,7 +155,7 @@ function renderFile(fid){
     <h1>${esc(f.name)}</h1>
     <p class="sub" id="progress"></p>
     <div class="row">
-      <button class="btn" id="addAct">إضافة نشاط</button>
+      ${isAdmin ? '<button class="btn" id="addAct">إضافة نشاط</button>' : ''}
       <input type="text" id="search" placeholder="ابحث في الأنشطة..." aria-label="بحث" style="max-width:260px;margin:0">
     </div>
     <div class="list" id="list"></div>`;
@@ -180,7 +170,7 @@ function renderFile(fid){
       <div class="act" style="--c:${ACT_COLORS[i % ACT_COLORS.length]}">
         <label style="display:flex;gap:12px;align-items:center;flex:1;cursor:pointer;min-width:220px">
           <span class="num">${i + 1}</span>
-          <input type="checkbox" data-done="${a.id}" ${a.done ? 'checked' : ''} aria-label="مكتمل">
+          <input type="checkbox" data-done="${a.id}" ${a.done ? 'checked' : ''} ${isAdmin ? '' : 'disabled'} aria-label="مكتمل">
           <span>
             <strong>${esc(a.title)}</strong>
             <span class="meta" style="display:block">${esc(a.date || '')}${a.attachments.length ? ' — ' + a.attachments.length + ' مرفق' : ''}</span>
@@ -188,29 +178,29 @@ function renderFile(fid){
         </label>
         <div class="row" style="margin:0">
           <a class="btn" href="#/file/${f.id}/act/${a.id}">فتح</a>
-          <button class="btn danger" data-del-act="${a.id}">حذف</button>
+          ${isAdmin ? `<button class="btn danger" data-del-act="${a.id}">حذف</button>` : ''}
         </div>
       </div>`).join('') ||
-      `<div class="empty">${q ? 'لا توجد نتائج مطابقة.' : 'لا توجد أنشطة. اضغط «إضافة نشاط».'}</div>`;
+      `<div class="empty">${q ? 'لا توجد نتائج مطابقة.' : 'لا توجد أنشطة.'}</div>`;
   };
   draw();
 
   $('#search').oninput = draw;
-  $('#addAct').onclick = () => openActivityForm(fid);
+  if (isAdmin) $('#addAct').onclick = () => openActivityForm(fid);
   $('#list').onclick = e => {
     const del = e.target.closest('[data-del-act]');
     if (del) deleteActivity(fid, del.dataset.delAct);
   };
-  $('#list').onchange = e => {
+  $('#list').onchange = async e => {
     const cb = e.target.closest('[data-done]');
-    if (!cb) return;
+    if (!cb || !isAdmin) return;
     f.activities.find(x => x.id === cb.dataset.done).done = cb.checked;
-    save(); draw();
+    draw(); await save();
   };
 }
 
 /* ===================== صفحة النشاط ===================== */
-async function renderActivity(fid, aid){
+function renderActivity(fid, aid){
   const f = findFile(fid), idx = f.activities.findIndex(x => x.id === aid), a = f.activities[idx];
   if (!a) return renderFile(fid);
   const color = ACT_COLORS[idx % ACT_COLORS.length];
@@ -222,32 +212,37 @@ async function renderActivity(fid, aid){
       <h2>الوصف والملاحظات</h2>
       <div class="notes">${esc(a.notes) || '<span class="meta">لا توجد ملاحظات.</span>'}</div>
       ${a.link ? `<p><a href="${esc(a.link)}" target="_blank" rel="noopener">فتح رابط النشاط</a></p>` : ''}
-      <button class="btn ghost" id="editAct">تعديل</button>
+      ${isAdmin ? '<button class="btn ghost" id="editAct">تعديل</button>' : ''}
     </div>
     <div class="card" style="--c:${color}">
       <h2>المرفقات (صور و PDF)</h2>
-      <div class="row">
+      ${isAdmin ? `<div class="row">
         <label class="btn" for="upl" style="background:${color};border-color:${color}">إضافة صور أو PDF</label>
         <input type="file" id="upl" accept="image/*,application/pdf" multiple hidden>
-      </div>
+      </div>` : ''}
       <div class="thumbs" id="thumbs"></div>
     </div>`;
 
-  $('#editAct').onclick = () => openActivityForm(fid, a);
-  $('#upl').onchange = async e => {
-    const files = [...e.target.files];
-    if (!files.length) return;
-    toast('جاري الرفع...');
-    for (const raw of files){
-      try {
-        const file = await shrinkImage(raw);
-        const id = uid();
-        await putBlob(id, file);
-        a.attachments.push({id, name:raw.name.replace(/\.\w+$/, '') + (file.name.match(/\.\w+$/) || [''])[0], mime:file.type});
-      } catch { toast('تعذر حفظ ' + raw.name + ' (المساحة ممتلئة؟)'); }
-    }
-    save(); toast('تمت الإضافة'); route();
-  };
+  if (isAdmin){
+    $('#editAct').onclick = () => openActivityForm(fid, a);
+    $('#upl').onchange = async e => {
+      const files = [...e.target.files];
+      if (!files.length) return;
+      toast('جاري الرفع...');
+      for (const raw of files){
+        try {
+          const file = await shrinkImage(raw);
+          const ext = ((file.name.match(/\.(\w+)$/) || [])[1] || '').toLowerCase();
+          const path = uid() + (ext ? '.' + ext : '');
+          const {error} = await sb.storage.from(BUCKET).upload(path, file, {contentType:file.type});
+          if (error) throw error;
+          const url = sb.storage.from(BUCKET).getPublicUrl(path).data.publicUrl;
+          a.attachments.push({id:path, path, url, name:raw.name.replace(/\.\w+$/, '') + (ext ? '.' + ext : ''), mime:file.type});
+        } catch (err) { toast('تعذر رفع ' + raw.name + ': ' + (err.message || '')); }
+      }
+      await save(); toast('تمت الإضافة'); route();
+    };
+  }
 
   const box = $('#thumbs');
   if (!a.attachments.length){
@@ -255,23 +250,19 @@ async function renderActivity(fid, aid){
     return;
   }
   for (const att of a.attachments){
-    const blob = await getBlob(att.id);
+    const isPdf = att.mime === 'application/pdf';
     const el = document.createElement('div'); el.className = 'thumb';
-    if (!blob){
-      el.innerHTML = `<div class="pdf" style="font-size:1rem">غير متوفر</div><div class="cap"><span>${esc(att.name)}</span><button>حذف</button></div>`;
-    } else {
-      const url = URL.createObjectURL(blob); objectUrls.push(url);
-      const isPdf = att.mime === 'application/pdf';
-      el.innerHTML = (isPdf ? '<div class="pdf" style="cursor:pointer">PDF</div>' : `<img src="${url}" alt="${esc(att.name)}">`) +
-        `<div class="cap"><span title="${esc(att.name)}">${esc(att.name)}</span><button>حذف</button></div>`;
-      el.firstElementChild.onclick = () => isPdf ? window.open(url, '_blank') : openImage(url, att.name);
+    el.innerHTML = (isPdf ? '<div class="pdf" style="cursor:pointer">PDF</div>' : `<img src="${esc(att.url)}" alt="${esc(att.name)}" loading="lazy">`) +
+      `<div class="cap"><span title="${esc(att.name)}">${esc(att.name)}</span>${isAdmin ? '<button>حذف</button>' : ''}</div>`;
+    el.firstElementChild.onclick = () => isPdf ? window.open(att.url, '_blank') : openImage(att.url, att.name);
+    if (isAdmin){
+      el.querySelector('button').onclick = async () => {
+        if (!confirm('حذف هذا المرفق؟')) return;
+        try { await sb.storage.from(BUCKET).remove([att.path]); } catch {}
+        a.attachments = a.attachments.filter(x => x.id !== att.id);
+        await save(); route();
+      };
     }
-    el.querySelector('button').onclick = async () => {
-      if (!confirm('حذف هذا المرفق؟')) return;
-      try { await delBlob(att.id); } catch {}
-      a.attachments = a.attachments.filter(x => x.id !== att.id);
-      save(); route();
-    };
     box.appendChild(el);
   }
 }
@@ -281,17 +272,32 @@ const dlg = $('#dlg');
 dlg.addEventListener('click', e => { if (e.target.closest('[data-close]')) dlg.close(); });
 function showDialog(html, wide){ dlg.className = wide ? 'wide' : ''; dlg.innerHTML = html; dlg.showModal(); }
 function openImage(url, name){
-  showDialog(`<img class="full" src="${url}" alt="${esc(name)}"><div class="dlgbtns"><button class="btn ghost" data-close>إغلاق</button></div>`, true);
+  showDialog(`<img class="full" src="${esc(url)}" alt="${esc(name)}"><div class="dlgbtns"><button class="btn ghost" data-close>إغلاق</button></div>`, true);
+}
+function openLogin(){
+  showDialog(`<form id="lf"><h2>دخول المعلم</h2>
+    <label class="f">البريد الإلكتروني<input type="email" name="email" required autocomplete="username" style="width:100%;font:inherit;padding:9px 11px;border:1px solid var(--line);border-radius:8px;margin-top:4px"></label>
+    <label class="f">كلمة المرور<input type="password" name="password" required autocomplete="current-password" style="width:100%;font:inherit;padding:9px 11px;border:1px solid var(--line);border-radius:8px;margin-top:4px"></label>
+    <div class="dlgbtns"><button class="btn" type="submit">دخول</button><button class="btn ghost" type="button" data-close>إلغاء</button></div></form>`);
+  $('#lf').onsubmit = async e => {
+    e.preventDefault();
+    const d = new FormData(e.target);
+    const {error} = await sb.auth.signInWithPassword({email:d.get('email'), password:d.get('password')});
+    if (error) return toast('بيانات الدخول غير صحيحة');
+    dlg.close(); isAdmin = true; setAuthUI();
+    if (!rowExists) await save();
+    route(); toast('تم تسجيل الدخول');
+  };
 }
 function openFileForm(){
   showDialog(`<form method="dialog" id="ff"><h2>ملف جديد</h2>
     <label class="f">اسم الملف<input type="text" name="name" required></label>
     <label class="f">النوع<select name="type">${Object.entries(TYPES).map(([k,v]) => `<option value="${k}">${v}</option>`).join('')}</select></label>
     <div class="dlgbtns"><button class="btn" value="ok">حفظ</button><button class="btn ghost" type="button" data-close>إلغاء</button></div></form>`);
-  $('#ff').onsubmit = e => {
+  $('#ff').onsubmit = async e => {
     const d = new FormData(e.target);
     state.files.push({id:uid(), name:d.get('name').trim(), type:d.get('type'), activities:[]});
-    save(); route(); toast('تمت إضافة الملف');
+    await save(); route(); toast('تمت إضافة الملف');
   };
 }
 function openActivityForm(fid, existing){
@@ -302,12 +308,12 @@ function openActivityForm(fid, existing){
     <label class="f">رابط (Teams أو غيره) اختياري<input type="url" name="link" value="${esc(a.link)}"></label>
     <label class="f">ملاحظات<textarea name="notes">${esc(a.notes)}</textarea></label>
     <div class="dlgbtns"><button class="btn" value="ok">حفظ</button><button class="btn ghost" type="button" data-close>إلغاء</button></div></form>`);
-  $('#af').onsubmit = e => {
+  $('#af').onsubmit = async e => {
     const d = new FormData(e.target), f = findFile(fid);
     const data = {title:d.get('title').trim(), date:d.get('date'), link:d.get('link'), notes:d.get('notes')};
     if (existing) Object.assign(existing, data);
     else f.activities.push({id:uid(), done:false, attachments:[], ...data});
-    save(); route(); toast('تم الحفظ');
+    await save(); route(); toast('تم الحفظ');
   };
 }
 
@@ -315,46 +321,40 @@ function openActivityForm(fid, existing){
 async function deleteActivity(fid, aid){
   const f = findFile(fid), a = f.activities.find(x => x.id === aid);
   if (!confirm(`حذف النشاط «${a.title}» وكل مرفقاته؟`)) return;
-  for (const att of a.attachments) { try { await delBlob(att.id); } catch {} }
+  const paths = a.attachments.map(x => x.path).filter(Boolean);
+  if (paths.length) { try { await sb.storage.from(BUCKET).remove(paths); } catch {} }
   f.activities = f.activities.filter(x => x.id !== aid);
-  save(); route(); toast('تم الحذف');
+  await save(); route(); toast('تم الحذف');
 }
 async function deleteFile(fid){
-  if (!CONFIG.ALLOW_FILE_MANAGEMENT) return;
+  if (!CONFIG.ALLOW_FILE_MANAGEMENT || !isAdmin) return;
   const f = findFile(fid);
   if (!confirm(`حذف الملف «${f.name}» بكل أنشطته؟`)) return;
-  for (const a of f.activities) for (const att of a.attachments) { try { await delBlob(att.id); } catch {} }
+  const paths = f.activities.flatMap(a => a.attachments.map(x => x.path)).filter(Boolean);
+  if (paths.length) { try { await sb.storage.from(BUCKET).remove(paths); } catch {} }
   state.files = state.files.filter(x => x.id !== fid);
-  save(); route(); toast('تم الحذف');
+  await save(); route(); toast('تم الحذف');
 }
 
-/* ===================== نسخة احتياطية ===================== */
-const toDataURL = b => new Promise(r => { const fr = new FileReader(); fr.onload = () => r(fr.result); fr.readAsDataURL(b); });
-$('#btnExport').onclick = async () => {
-  toast('جاري تجهيز النسخة...');
-  const blobs = {};
-  for (const f of state.files) for (const a of f.activities) for (const att of a.attachments){
-    try { const b = await getBlob(att.id); if (b) blobs[att.id] = await toDataURL(b); } catch {}
-  }
-  const out = new Blob([JSON.stringify({state, blobs})], {type:'application/json'});
-  const link = document.createElement('a');
-  link.href = URL.createObjectURL(out);
-  link.download = 'platform-backup-' + new Date().toISOString().slice(0, 10) + '.json';
-  link.click();
-  setTimeout(() => URL.revokeObjectURL(link.href), 5000);
-  toast('تم حفظ النسخة الاحتياطية');
-};
-$('#importInput').onchange = async e => {
-  const file = e.target.files[0];
-  if (!file) return;
-  try {
-    const data = JSON.parse(await file.text());
-    if (!data.state || !Array.isArray(data.state.files)) throw new Error('bad');
-    if (!confirm('سيتم استبدال البيانات الحالية بالنسخة المحفوظة. هل تريد المتابعة؟')) return;
-    for (const [id, url] of Object.entries(data.blobs || {})) await putBlob(id, await (await fetch(url)).blob());
-    state = data.state; save(); route(); toast('تم استرجاع النسخة');
-  } catch { toast('الملف غير صالح'); }
-  e.target.value = '';
+/* ===================== التشغيل ===================== */
+$('#btnAuth').onclick = async () => {
+  if (!sb) return;
+  if (isAdmin){ await sb.auth.signOut(); isAdmin = false; setAuthUI(); route(); toast('تم تسجيل الخروج'); }
+  else openLogin();
 };
 
-route();
+(async function init(){
+  if (!sb || CONFIG.SUPABASE_URL.startsWith('PASTE')){
+    app.innerHTML = '<div class="empty">لم يتم ربط المنصة بـ Supabase بعد. ضع الرابط والمفتاح في أول ملف app.js.</div>';
+    return;
+  }
+  app.innerHTML = '<div class="empty">جاري التحميل...</div>';
+  try {
+    const {data} = await sb.auth.getSession();
+    isAdmin = !!data.session; setAuthUI();
+    await loadState();
+    ready = true; route();
+  } catch (err) {
+    app.innerHTML = `<div class="empty">تعذر تحميل البيانات: ${esc(err.message || err)}<br>تأكد من الرابط والمفتاح ومن تنفيذ كود SQL.</div>`;
+  }
+})();
