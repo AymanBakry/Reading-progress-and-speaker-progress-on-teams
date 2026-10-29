@@ -1,6 +1,6 @@
 /* ===================== الإعدادات ===================== */
 const CONFIG = {
-  SUPABASE_URL: 'qmeqjthfsdupxkzrvkrg',
+  SUPABASE_URL: 'https://qmeqjthfsdupxkzrvkrg.supabase.co',
   SUPABASE_KEY: 'sb_publishable_la2DYxS5MwKB0NuDubqwyw_HGVaehDN',
   ALLOW_FILE_MANAGEMENT: false,   // true = السماح للمعلم بإضافة وحذف الملفات الرئيسية
   MAX_IMAGE_SIDE: 1600
@@ -15,6 +15,14 @@ const STAFF = [
 ];
 const ACT_COLORS = ['#CE1126','#0b6f7e','#9a6b00','#1d3a8a','#237a4b','#7b3fa0','#c2410c','#0e7490','#7c4a2d','#a3185a'];
 const TYPES = {reading:'Reading Progress', speaking:'Speaking Progress on Teams', other:'أخرى'};
+
+/* روابط مجلدات الأنشطة في جوجل درايف (اختيارية): الصق الرابط بين علامتي الاقتباس */
+const DRIVE_LINKS = {
+  'r-1': '',  'r-2': '',  'r-3': '',  'r-4': '',  'r-5': '',
+  'r-6': '',  'r-7': '',  'r-8': '',  'r-9': '',  'r-10': '',
+  's-1': '',  's-2': '',  's-3': '',  's-4': '',  's-5': '',
+  's-6': '',  's-7': '',  's-8': '',  's-9': '',  's-10': ''
+};
 
 /* ===================== أدوات مساعدة ===================== */
 const $ = (s, r = document) => r.querySelector(s);
@@ -204,6 +212,7 @@ function renderActivity(fid, aid){
   const f = findFile(fid), idx = f.activities.findIndex(x => x.id === aid), a = f.activities[idx];
   if (!a) return renderFile(fid);
   const color = ACT_COLORS[idx % ACT_COLORS.length];
+  const drive = DRIVE_LINKS[a.id] || '';
   app.innerHTML = `
     <div class="crumbs"><a href="#/">الرئيسية</a> / <a href="#/file/${f.id}">${esc(f.name)}</a> / ${esc(a.title)}</div>
     <h1 style="color:${color}">${esc(a.title)}</h1>
@@ -211,6 +220,7 @@ function renderActivity(fid, aid){
     <div class="card" style="--c:${color}">
       <h2>الوصف والملاحظات</h2>
       <div class="notes">${esc(a.notes) || '<span class="meta">لا توجد ملاحظات.</span>'}</div>
+      ${drive ? `<p><a class="btn" href="${esc(drive)}" target="_blank" rel="noopener" style="background:${color};border-color:${color}">فتح مجلد النشاط في جوجل درايف</a></p>` : ''}
       ${a.link ? `<p><a href="${esc(a.link)}" target="_blank" rel="noopener">فتح رابط النشاط</a></p>` : ''}
       ${isAdmin ? '<button class="btn ghost" id="editAct">تعديل</button>' : ''}
     </div>
@@ -348,8 +358,16 @@ $('#btnAuth').onclick = async () => {
 };
 
 (async function init(){
-  if (!sb || CONFIG.SUPABASE_URL.startsWith('PASTE')){
-    app.innerHTML = '<div class="empty">لم يتم ربط المنصة بـ Supabase بعد. ضع الرابط والمفتاح في أول ملف app.js.</div>';
+  if (CONFIG.SUPABASE_URL.startsWith('PASTE') || CONFIG.SUPABASE_KEY.startsWith('PASTE')){
+    app.innerHTML = '<div class="empty">الرابط أو المفتاح ما زال النص المؤقت PASTE في أول ملف app.js.</div>';
+    return;
+  }
+  if (typeof supabase === 'undefined'){
+    app.innerHTML = '<div class="empty">لم تُحمَّل مكتبة Supabase. تأكد من سطر supabase.js في index.html ومن اتصال الإنترنت.</div>';
+    return;
+  }
+  if (!sb){
+    app.innerHTML = '<div class="empty">تعذر إنشاء الاتصال. تأكد من الرابط والمفتاح في أول ملف app.js.</div>';
     return;
   }
   app.innerHTML = '<div class="empty">جاري التحميل...</div>';
@@ -359,6 +377,6 @@ $('#btnAuth').onclick = async () => {
     await loadState();
     ready = true; route();
   } catch (err) {
-    app.innerHTML = `<div class="empty">تعذر تحميل البيانات: ${esc(err.message || err)}<br>تأكد من الرابط والمفتاح ومن تنفيذ كود SQL.</div>`;
+    app.innerHTML = `<div class="empty">تعذر تحميل البيانات: ${esc(err.message || err)}<br>تأكد من تنفيذ كود SQL في Supabase ومن صحة الرابط والمفتاح.</div>`;
   }
 })();
