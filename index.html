@@ -10,17 +10,12 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fancyapps/ui@5.0.36/dist/fancybox/fancybox.css">
   <link rel="stylesheet" href="style.css">
 
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
   <script>
-    window.addEventListener('error', function (e) {
-      var box = document.getElementById('app');
-      if (box) {
-        box.innerHTML = '<div style="padding:20px;color:#b3261e;direction:ltr;font-family:monospace">'
-          + 'Error: ' + (e.message || 'failed to load a file')
-          + (e.lineno ? ' (line ' + e.lineno + ')' : '') + '</div>';
-      }
-    }, true);
+    if (!window.supabase) {
+      document.write('<script src="https://unpkg.com/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"><\/script>');
+    }
   </script>
-  <script src="<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.58.0/dist/umd/supabase.js">"></script>
   <script src="https://cdn.jsdelivr.net/npm/@fancyapps/ui@5.0.36/dist/fancybox/fancybox.umd.js"></script>
 </head>
 <body>
