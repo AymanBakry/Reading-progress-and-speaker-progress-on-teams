@@ -1,7 +1,7 @@
 /* ===================== الإعدادات ===================== */
 const CONFIG = {
-  SUPABASE_URL: 'PASTE_PROJECT_URL_HERE',
-  SUPABASE_KEY: 'PASTE_PUBLIC_KEY_HERE',
+  SUPABASE_URL: 'qmeqjthfsdupxkzrvkrg',
+  SUPABASE_KEY: 'sb_publishable_la2DYxS5MwKB0NuDubqwyw_HGVaehDN',
   ALLOW_FILE_MANAGEMENT: false,   // true = السماح للمعلم بإضافة وحذف الملفات الرئيسية
   MAX_IMAGE_SIDE: 1600
 };
