@@ -64,7 +64,7 @@ async function save(){
 }
 function setAuthUI(){ $('#btnAuth').textContent = isAdmin ? 'خروج المعلم' : 'دخول المعلم'; }
 
-/* ===================== الصور ===================== */
+/* ===================== ضغط الصور ===================== */
 async function shrinkImage(file){
   if (!file.type.startsWith('image/') || /gif|svg/.test(file.type)) return file;
   try {
@@ -251,10 +251,16 @@ function renderActivity(fid, aid){
   }
   for (const att of a.attachments){
     const isPdf = att.mime === 'application/pdf';
+    const href = isPdf ? 'https://docs.google.com/gview?embedded=1&url=' + encodeURIComponent(att.url) : att.url;
+    const caption = esc(att.name) + (isPdf
+      ? ` — <a href="${esc(att.url)}" target="_blank" rel="noopener" style="color:#fff;text-decoration:underline">فتح مباشر</a>`
+      : '');
     const el = document.createElement('div'); el.className = 'thumb';
-    el.innerHTML = (isPdf ? '<div class="pdf" style="cursor:pointer">PDF</div>' : `<img src="${esc(att.url)}" alt="${esc(att.name)}" loading="lazy">`) +
+    el.innerHTML =
+      `<a href="${esc(href)}" data-fancybox="gallery" ${isPdf ? 'data-type="iframe"' : ''} data-caption="${esc(caption)}">` +
+        (isPdf ? '<div class="pdf">PDF</div>' : `<img src="${esc(att.url)}" alt="${esc(att.name)}" loading="lazy">`) +
+      `</a>` +
       `<div class="cap"><span title="${esc(att.name)}">${esc(att.name)}</span>${isAdmin ? '<button>حذف</button>' : ''}</div>`;
-    el.firstElementChild.onclick = () => isPdf ? window.open(att.url, '_blank') : openImage(att.url, att.name);
     if (isAdmin){
       el.querySelector('button').onclick = async () => {
         if (!confirm('حذف هذا المرفق؟')) return;
@@ -265,19 +271,17 @@ function renderActivity(fid, aid){
     }
     box.appendChild(el);
   }
+  if (window.Fancybox) Fancybox.bind(box, '[data-fancybox="gallery"]', {Hash:false});
 }
 
 /* ===================== النوافذ ===================== */
 const dlg = $('#dlg');
 dlg.addEventListener('click', e => { if (e.target.closest('[data-close]')) dlg.close(); });
-function showDialog(html, wide){ dlg.className = wide ? 'wide' : ''; dlg.innerHTML = html; dlg.showModal(); }
-function openImage(url, name){
-  showDialog(`<img class="full" src="${esc(url)}" alt="${esc(name)}"><div class="dlgbtns"><button class="btn ghost" data-close>إغلاق</button></div>`, true);
-}
+function showDialog(html){ dlg.innerHTML = html; dlg.showModal(); }
 function openLogin(){
   showDialog(`<form id="lf"><h2>دخول المعلم</h2>
-    <label class="f">البريد الإلكتروني<input type="email" name="email" required autocomplete="username" style="width:100%;font:inherit;padding:9px 11px;border:1px solid var(--line);border-radius:8px;margin-top:4px"></label>
-    <label class="f">كلمة المرور<input type="password" name="password" required autocomplete="current-password" style="width:100%;font:inherit;padding:9px 11px;border:1px solid var(--line);border-radius:8px;margin-top:4px"></label>
+    <label class="f">البريد الإلكتروني<input type="email" name="email" required autocomplete="username"></label>
+    <label class="f">كلمة المرور<input type="password" name="password" required autocomplete="current-password"></label>
     <div class="dlgbtns"><button class="btn" type="submit">دخول</button><button class="btn ghost" type="button" data-close>إلغاء</button></div></form>`);
   $('#lf').onsubmit = async e => {
     e.preventDefault();
