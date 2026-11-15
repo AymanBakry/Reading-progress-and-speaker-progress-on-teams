@@ -1,0 +1,198 @@
+{
+ "files": [
+  {
+   "id": "reading",
+   "name": "Reading Progress",
+   "type": "reading",
+   "activities": [
+    {
+     "id": "r-1",
+     "title": "Reading progress 1: sports",
+     "date": "",
+     "notes": "",
+     "link": "",
+     "done": false,
+     "attachments": []
+    },
+    {
+     "id": "r-2",
+     "title": "Reading progress 2: health",
+     "date": "",
+     "notes": "",
+     "link": "",
+     "done": false,
+     "attachments": []
+    },
+    {
+     "id": "r-3",
+     "title": "Reading progress 3: My Family and Friends",
+     "date": "",
+     "notes": "",
+     "link": "",
+     "done": false,
+     "attachments": []
+    },
+    {
+     "id": "r-4",
+     "title": "Reading progress 4: The Weather and Seasons",
+     "date": "",
+     "notes": "",
+     "link": "",
+     "done": false,
+     "attachments": []
+    },
+    {
+     "id": "r-5",
+     "title": "Reading progress 5: Healthy Food vs. Junk Food",
+     "date": "",
+     "notes": "",
+     "link": "",
+     "done": false,
+     "attachments": []
+    },
+    {
+     "id": "r-6",
+     "title": "Reading progress 6: My Favorite School Subject",
+     "date": "",
+     "notes": "",
+     "link": "",
+     "done": false,
+     "attachments": []
+    },
+    {
+     "id": "r-7",
+     "title": "Reading progress 7: Bahraini Traditional Food",
+     "date": "",
+     "notes": "",
+     "link": "",
+     "done": false,
+     "attachments": []
+    },
+    {
+     "id": "r-8",
+     "title": "Reading progress 8: Ramadan in Bahrain",
+     "date": "",
+     "notes": "",
+     "link": "",
+     "done": false,
+     "attachments": []
+    },
+    {
+     "id": "r-9",
+     "title": "Reading progress 9: Mothers' Day",
+     "date": "",
+     "notes": "",
+     "link": "",
+     "done": false,
+     "attachments": []
+    },
+    {
+     "id": "r-10",
+     "title": "Reading progress 10: Bahraini Landmarks",
+     "date": "",
+     "notes": "",
+     "link": "",
+     "done": false,
+     "attachments": []
+    }
+   ]
+  },
+  {
+   "id": "speaking",
+   "name": "Speaking Progress on Teams",
+   "type": "speaking",
+   "activities": [
+    {
+     "id": "s-1",
+     "title": "Speaker progress 1: A place I visited and liked so much",
+     "date": "",
+     "notes": "",
+     "link": "",
+     "done": false,
+     "attachments": []
+    },
+    {
+     "id": "s-2",
+     "title": "Speaker progress 2: My Daily Routine",
+     "date": "",
+     "notes": "",
+     "link": "",
+     "done": false,
+     "attachments": []
+    },
+    {
+     "id": "s-3",
+     "title": "Speaker progress 3: Festivals",
+     "date": "",
+     "notes": "",
+     "link": "",
+     "done": false,
+     "attachments": []
+    },
+    {
+     "id": "s-4",
+     "title": "Speaker progress 4: Bahrain National Day",
+     "date": "",
+     "notes": "",
+     "link": "",
+     "done": false,
+     "attachments": []
+    },
+    {
+     "id": "s-5",
+     "title": "Speaker progress 5: Describe Your house",
+     "date": "",
+     "notes": "",
+     "link": "",
+     "done": false,
+     "attachments": []
+    },
+    {
+     "id": "s-6",
+     "title": "Speaker progress 6: My favourite sport",
+     "date": "",
+     "notes": "",
+     "link": "",
+     "done": false,
+     "attachments": []
+    },
+    {
+     "id": "s-7",
+     "title": "Speaker progress 7: My favourite hobby",
+     "date": "",
+     "notes": "",
+     "link": "",
+     "done": false,
+     "attachments": []
+    },
+    {
+     "id": "s-8",
+     "title": "Speaker progress 8: A Trip to the Zoo or Park",
+     "date": "",
+     "notes": "",
+     "link": "",
+     "done": false,
+     "attachments": []
+    },
+    {
+     "id": "s-9",
+     "title": "Speaker progress 9: A Family Day at the Beach",
+     "date": "",
+     "notes": "",
+     "link": "",
+     "done": false,
+     "attachments": []
+    },
+    {
+     "id": "s-10",
+     "title": "Speaker progress 10: Four seasons of the year",
+     "date": "",
+     "notes": "",
+     "link": "",
+     "done": false,
+     "attachments": []
+    }
+   ]
+  }
+ ]
+}
