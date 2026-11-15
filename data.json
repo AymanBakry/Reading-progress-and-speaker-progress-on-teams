@@ -12,7 +12,36 @@
      "notes": "",
      "link": "",
      "done": true,
-     "attachments": []
+     "attachments": [
+      {
+       "id": "uploads/mwi6xpltcvr4e.pdf",
+       "path": "uploads/mwi6xpltcvr4e.pdf",
+       "sha": "9226fa6080aef0bfee14368d6b8fc6675e1dd80e",
+       "name": "Reading progress competition  about  Sports.pdf",
+       "mime": "application/pdf"
+      },
+      {
+       "id": "uploads/mwi6xtdf187bz.png",
+       "path": "uploads/mwi6xtdf187bz.png",
+       "sha": "e0eb3b9050dc89e6fb799d7d8ae69be09ec00c9a",
+       "name": "Screenshot 2026-10-03 200412.png",
+       "mime": "image/png"
+      },
+      {
+       "id": "uploads/mwi6xunny3xhb.png",
+       "path": "uploads/mwi6xunny3xhb.png",
+       "sha": "8575c4e8d0ebb92ca2599f4970ec6b75f930200c",
+       "name": "Screenshot 2026-10-03 200514.png",
+       "mime": "image/png"
+      },
+      {
+       "id": "uploads/mwi6xvvz89wza.png",
+       "path": "uploads/mwi6xvvz89wza.png",
+       "sha": "a40eb5d513417a9a95c680e1a674c446aad8441f",
+       "name": "Screenshot 2026-10-03 200559.png",
+       "mime": "image/png"
+      }
+     ]
     },
     {
      "id": "r-2",
