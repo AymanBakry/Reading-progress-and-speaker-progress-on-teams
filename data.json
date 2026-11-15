@@ -50,7 +50,15 @@
      "notes": "",
      "link": "",
      "done": true,
-     "attachments": []
+     "attachments": [
+      {
+       "id": "uploads/mwi6yof863b1d.pdf",
+       "path": "uploads/mwi6yof863b1d.pdf",
+       "sha": "dbac8c518f1c0a83bb2aa7877563b3857830dc46",
+       "name": "Reading progress competition about health.pdf",
+       "mime": "application/pdf"
+      }
+     ]
     },
     {
      "id": "r-3",
