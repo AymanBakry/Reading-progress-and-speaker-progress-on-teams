@@ -67,7 +67,15 @@
      "notes": "",
      "link": "",
      "done": true,
-     "attachments": []
+     "attachments": [
+      {
+       "id": "uploads/mwi6zx9l2is2w.pdf",
+       "path": "uploads/mwi6zx9l2is2w.pdf",
+       "sha": "ba30d2d13b436946b5fa42cba3f705e57b0818bf",
+       "name": "Reading progress competition- Family & friends.pdf",
+       "mime": "application/pdf"
+      }
+     ]
     },
     {
      "id": "r-4",
