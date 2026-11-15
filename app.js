@@ -1,11 +1,16 @@
 /* ===================== الإعدادات ===================== */
 const CONFIG = {
-  SUPABASE_URL: 'https://qmeqjthfsdupxkzrvkrg.supabase.co',
-  SUPABASE_KEY: 'sb_publishable_la2DYxS5MwKB0NuDubqwyw_HGVaehDN',
+  OWNER: 'aymanbakry',
+  REPO: 'Reading-progress-and-speaker-progress-on-teams',
+  BRANCH: 'main',
   ALLOW_FILE_MANAGEMENT: false,   // true = السماح للمعلم بإضافة وحذف الملفات الرئيسية
-  MAX_IMAGE_SIDE: 1600
+  MAX_IMAGE_SIDE: 1600,
+  MAX_FILE_MB: 20
 };
-const BUCKET = 'attachments';
+const API = `https://api.github.com/repos/${CONFIG.OWNER}/${CONFIG.REPO}/contents`;
+const RAW = `https://raw.githubusercontent.com/${CONFIG.OWNER}/${CONFIG.REPO}/${CONFIG.BRANCH}`;
+const TOKEN_KEY = 'gh-token-v1';
+
 const SCHOOL = 'مدرسة البلاد القديم الابتدائية الإعدادية للبنين';
 const STAFF = [
   {role:'مدير المدرسة',  name:'محمد إبراهيم', c:'#CE1126'},
@@ -31,8 +36,17 @@ const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt
 let toastTimer;
 function toast(msg){
   const t = $('#toast'); t.textContent = msg; t.classList.add('show');
-  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), 2800);
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), 3000);
 }
+const toB64 = str => btoa(unescape(encodeURIComponent(str)));
+const fromB64 = b64 => decodeURIComponent(escape(atob(b64.replace(/\n/g, ''))));
+const fileToB64 = f => new Promise((res, rej) => {
+  const r = new FileReader();
+  r.onload = () => res(String(r.result).split(',')[1]);
+  r.onerror = () => rej(r.error);
+  r.readAsDataURL(f);
+});
+const attUrl = att => `${RAW}/${att.path}`;
 
 /* ===================== الأنشطة الجاهزة ===================== */
 const READING = [
@@ -53,24 +67,87 @@ function defaultState(){
   ]};
 }
 
-/* ===================== الاتصال بـ Supabase ===================== */
+/* ===================== الاتصال بـ GitHub ===================== */
 const app = $('#app');
-let sb = null, state = defaultState(), isAdmin = false, rowExists = false, ready = false;
-try { sb = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_KEY); } catch (e) { sb = null; }
+let state = defaultState(), dataSha = null, ready = false;
+const getToken = () => { try { return localStorage.getItem(TOKEN_KEY) || ''; } catch { return ''; } };
+let isAdmin = !!getToken();
 
-async function loadState(){
-  const {data, error} = await sb.from('app_state').select('data').eq('id', 1).maybeSingle();
-  if (error) throw error;
-  rowExists = !!data;
-  state = (data && data.data && Array.isArray(data.data.files)) ? data.data : defaultState();
-}
-async function save(){
-  if (!isAdmin) return false;
-  const {error} = await sb.from('app_state').upsert({id:1, data:state, updated_at:new Date().toISOString()});
-  if (error){ toast('تعذر الحفظ: ' + error.message); return false; }
-  rowExists = true; return true;
+function gh(path, opts = {}){
+  return fetch(`${API}/${path}`, {
+    ...opts,
+    headers: {
+      'Accept': 'application/vnd.github+json',
+      'Authorization': 'Bearer ' + getToken(),
+      ...(opts.body ? {'Content-Type': 'application/json'} : {})
+    }
+  });
 }
 function setAuthUI(){ $('#btnAuth').textContent = isAdmin ? 'خروج المعلم' : 'دخول المعلم'; }
+function dropToken(){ try { localStorage.removeItem(TOKEN_KEY); } catch {} isAdmin = false; dataSha = null; setAuthUI(); }
+
+async function loadState(){
+  if (isAdmin){
+    const res = await gh(`data.json?ref=${CONFIG.BRANCH}&t=${Date.now()}`);
+    if (res.status === 401){ dropToken(); toast('انتهت صلاحية المفتاح، سجّل الدخول من جديد'); return loadState(); }
+    if (res.status === 404){ dataSha = null; state = defaultState(); return; }
+    if (!res.ok) throw new Error('GitHub ' + res.status);
+    const j = await res.json();
+    dataSha = j.sha;
+    state = JSON.parse(fromB64(j.content));
+  } else {
+    const res = await fetch(`${RAW}/data.json?t=${Date.now()}`);
+    state = res.ok ? await res.json() : defaultState();
+  }
+  if (!state || !Array.isArray(state.files)) state = defaultState();
+}
+
+/* الحفظ يتم بالتتابع حتى لا تتعارض الطلبات */
+let saveChain = Promise.resolve();
+function save(){
+  const run = () => doSave(true);
+  saveChain = saveChain.then(run, run);
+  return saveChain;
+}
+async function doSave(retry){
+  if (!isAdmin) return false;
+  const body = {message:'update data', content:toB64(JSON.stringify(state, null, 1)), branch:CONFIG.BRANCH};
+  if (dataSha) body.sha = dataSha;
+  let res;
+  try { res = await gh('data.json', {method:'PUT', body:JSON.stringify(body)}); }
+  catch { toast('تعذر الحفظ: تحقق من الاتصال بالإنترنت'); return false; }
+  if (res.ok){ dataSha = (await res.json()).content.sha; return true; }
+  if ((res.status === 409 || res.status === 422) && retry){
+    const r = await gh(`data.json?ref=${CONFIG.BRANCH}&t=${Date.now()}`);
+    dataSha = r.ok ? (await r.json()).sha : null;
+    return doSave(false);
+  }
+  if (res.status === 401 || res.status === 403){ toast('المفتاح لا يملك صلاحية الكتابة. أنشئ مفتاحاً جديداً.'); return false; }
+  toast('تعذر الحفظ (' + res.status + ')');
+  return false;
+}
+
+async function uploadFile(file){
+  const ext = ((file.name.match(/\.(\w+)$/) || [])[1] || '').toLowerCase();
+  const name = uid() + (ext ? '.' + ext : '');
+  const path = 'uploads/' + name;
+  const content = await fileToB64(file);
+  const res = await gh(path, {method:'PUT', body:JSON.stringify({message:'upload ' + name, content, branch:CONFIG.BRANCH})});
+  if (!res.ok){
+    const e = await res.json().catch(() => ({}));
+    throw new Error(e.message || ('HTTP ' + res.status));
+  }
+  const j = await res.json();
+  return {path, sha:j.content.sha};
+}
+async function removeRemote(att){
+  try {
+    const r = await gh(`${att.path}?ref=${CONFIG.BRANCH}&t=${Date.now()}`);
+    if (!r.ok) return;
+    const sha = (await r.json()).sha;
+    await gh(att.path, {method:'DELETE', body:JSON.stringify({message:'delete file', sha, branch:CONFIG.BRANCH})});
+  } catch {}
+}
 
 /* ===================== ضغط الصور ===================== */
 async function shrinkImage(file){
@@ -238,16 +315,15 @@ function renderActivity(fid, aid){
     $('#upl').onchange = async e => {
       const files = [...e.target.files];
       if (!files.length) return;
-      toast('جاري الرفع...');
-      for (const raw of files){
+      for (let n = 0; n < files.length; n++){
+        const raw = files[n];
+        toast(`جاري رفع ${n + 1} من ${files.length}...`);
         try {
           const file = await shrinkImage(raw);
+          if (file.size > CONFIG.MAX_FILE_MB * 1024 * 1024) throw new Error('حجم الملف أكبر من ' + CONFIG.MAX_FILE_MB + ' ميجابايت');
+          const up = await uploadFile(file);
           const ext = ((file.name.match(/\.(\w+)$/) || [])[1] || '').toLowerCase();
-          const path = uid() + (ext ? '.' + ext : '');
-          const {error} = await sb.storage.from(BUCKET).upload(path, file, {contentType:file.type});
-          if (error) throw error;
-          const url = sb.storage.from(BUCKET).getPublicUrl(path).data.publicUrl;
-          a.attachments.push({id:path, path, url, name:raw.name.replace(/\.\w+$/, '') + (ext ? '.' + ext : ''), mime:file.type});
+          a.attachments.push({id:up.path, path:up.path, sha:up.sha, name:raw.name.replace(/\.\w+$/, '') + (ext ? '.' + ext : ''), mime:file.type});
         } catch (err) { toast('تعذر رفع ' + raw.name + ': ' + (err.message || '')); }
       }
       await save(); toast('تمت الإضافة'); route();
@@ -260,21 +336,23 @@ function renderActivity(fid, aid){
     return;
   }
   for (const att of a.attachments){
+    const url = attUrl(att);
     const isPdf = att.mime === 'application/pdf';
-    const href = isPdf ? 'https://docs.google.com/gview?embedded=1&url=' + encodeURIComponent(att.url) : att.url;
+    const href = isPdf ? 'https://docs.google.com/gview?embedded=1&url=' + encodeURIComponent(url) : url;
     const caption = esc(att.name) + (isPdf
-      ? ` — <a href="${esc(att.url)}" target="_blank" rel="noopener" style="color:#fff;text-decoration:underline">فتح مباشر</a>`
+      ? ` — <a href="${esc(url)}" target="_blank" rel="noopener" style="color:#fff;text-decoration:underline">فتح مباشر</a>`
       : '');
     const el = document.createElement('div'); el.className = 'thumb';
     el.innerHTML =
       `<a href="${esc(href)}" data-fancybox="gallery" ${isPdf ? 'data-type="iframe"' : ''} data-caption="${esc(caption)}">` +
-        (isPdf ? '<div class="pdf">PDF</div>' : `<img src="${esc(att.url)}" alt="${esc(att.name)}" loading="lazy">`) +
+        (isPdf ? '<div class="pdf">PDF</div>' : `<img src="${esc(url)}" alt="${esc(att.name)}" loading="lazy">`) +
       `</a>` +
       `<div class="cap"><span title="${esc(att.name)}">${esc(att.name)}</span>${isAdmin ? '<button>حذف</button>' : ''}</div>`;
     if (isAdmin){
       el.querySelector('button').onclick = async () => {
         if (!confirm('حذف هذا المرفق؟')) return;
-        try { await sb.storage.from(BUCKET).remove([att.path]); } catch {}
+        toast('جاري الحذف...');
+        await removeRemote(att);
         a.attachments = a.attachments.filter(x => x.id !== att.id);
         await save(); route();
       };
@@ -288,18 +366,27 @@ function renderActivity(fid, aid){
 const dlg = $('#dlg');
 dlg.addEventListener('click', e => { if (e.target.closest('[data-close]')) dlg.close(); });
 function showDialog(html){ dlg.innerHTML = html; dlg.showModal(); }
+
 function openLogin(){
   showDialog(`<form id="lf"><h2>دخول المعلم</h2>
-    <label class="f">البريد الإلكتروني<input type="email" name="email" required autocomplete="username"></label>
-    <label class="f">كلمة المرور<input type="password" name="password" required autocomplete="current-password"></label>
+    <label class="f">مفتاح GitHub (يبدأ بـ github_pat_)
+      <input type="password" name="token" required autocomplete="off" placeholder="الصق المفتاح هنا"></label>
+    <p class="meta">يُحفظ المفتاح في هذا المتصفح فقط ولا يظهر لأحد. لا تشاركه مع أحد.</p>
     <div class="dlgbtns"><button class="btn" type="submit">دخول</button><button class="btn ghost" type="button" data-close>إلغاء</button></div></form>`);
   $('#lf').onsubmit = async e => {
     e.preventDefault();
-    const d = new FormData(e.target);
-    const {error} = await sb.auth.signInWithPassword({email:d.get('email'), password:d.get('password')});
-    if (error) return toast('بيانات الدخول غير صحيحة');
-    dlg.close(); isAdmin = true; setAuthUI();
-    if (!rowExists) await save();
+    const token = new FormData(e.target).get('token').trim();
+    try {
+      const res = await fetch(`https://api.github.com/repos/${CONFIG.OWNER}/${CONFIG.REPO}`, {
+        headers: {'Accept':'application/vnd.github+json', 'Authorization':'Bearer ' + token}
+      });
+      if (!res.ok) return toast('المفتاح غير صالح أو لا يصل إلى هذا المستودع');
+      const j = await res.json();
+      if (j.permissions && j.permissions.push === false) return toast('المفتاح لا يملك صلاحية الكتابة (Contents: Read and write)');
+    } catch { return toast('تعذر الاتصال بـ GitHub'); }
+    try { localStorage.setItem(TOKEN_KEY, token); } catch { return toast('المتصفح يمنع حفظ المفتاح'); }
+    isAdmin = true; setAuthUI(); dlg.close();
+    try { await loadState(); if (!dataSha) await save(); } catch (err) { toast('تعذر تحميل البيانات: ' + err.message); }
     route(); toast('تم تسجيل الدخول');
   };
 }
@@ -335,8 +422,8 @@ function openActivityForm(fid, existing){
 async function deleteActivity(fid, aid){
   const f = findFile(fid), a = f.activities.find(x => x.id === aid);
   if (!confirm(`حذف النشاط «${a.title}» وكل مرفقاته؟`)) return;
-  const paths = a.attachments.map(x => x.path).filter(Boolean);
-  if (paths.length) { try { await sb.storage.from(BUCKET).remove(paths); } catch {} }
+  toast('جاري الحذف...');
+  for (const att of a.attachments) await removeRemote(att);
   f.activities = f.activities.filter(x => x.id !== aid);
   await save(); route(); toast('تم الحذف');
 }
@@ -344,39 +431,28 @@ async function deleteFile(fid){
   if (!CONFIG.ALLOW_FILE_MANAGEMENT || !isAdmin) return;
   const f = findFile(fid);
   if (!confirm(`حذف الملف «${f.name}» بكل أنشطته؟`)) return;
-  const paths = f.activities.flatMap(a => a.attachments.map(x => x.path)).filter(Boolean);
-  if (paths.length) { try { await sb.storage.from(BUCKET).remove(paths); } catch {} }
+  toast('جاري الحذف...');
+  for (const a of f.activities) for (const att of a.attachments) await removeRemote(att);
   state.files = state.files.filter(x => x.id !== fid);
   await save(); route(); toast('تم الحذف');
 }
 
 /* ===================== التشغيل ===================== */
 $('#btnAuth').onclick = async () => {
-  if (!sb) return;
-  if (isAdmin){ await sb.auth.signOut(); isAdmin = false; setAuthUI(); route(); toast('تم تسجيل الخروج'); }
-  else openLogin();
+  if (isAdmin){
+    dropToken();
+    try { await loadState(); } catch {}
+    route(); toast('تم تسجيل الخروج');
+  } else openLogin();
 };
 
 (async function init(){
-  if (CONFIG.SUPABASE_URL.startsWith('PASTE') || CONFIG.SUPABASE_KEY.startsWith('PASTE')){
-    app.innerHTML = '<div class="empty">الرابط أو المفتاح ما زال النص المؤقت PASTE في أول ملف app.js.</div>';
-    return;
-  }
-  if (typeof supabase === 'undefined'){
-    app.innerHTML = '<div class="empty">لم تُحمَّل مكتبة Supabase. تأكد من سطر supabase.js في index.html ومن اتصال الإنترنت.</div>';
-    return;
-  }
-  if (!sb){
-    app.innerHTML = '<div class="empty">تعذر إنشاء الاتصال. تأكد من الرابط والمفتاح في أول ملف app.js.</div>';
-    return;
-  }
+  setAuthUI();
   app.innerHTML = '<div class="empty">جاري التحميل...</div>';
   try {
-    const {data} = await sb.auth.getSession();
-    isAdmin = !!data.session; setAuthUI();
     await loadState();
     ready = true; route();
   } catch (err) {
-    app.innerHTML = `<div class="empty">تعذر تحميل البيانات: ${esc(err.message || err)}<br>تأكد من تنفيذ كود SQL في Supabase ومن صحة الرابط والمفتاح.</div>`;
+    app.innerHTML = `<div class="empty">تعذر تحميل البيانات: ${esc(err.message || err)}<br>تأكد من الاتصال بالإنترنت وأعد المحاولة.</div>`;
   }
 })();
