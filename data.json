@@ -336,7 +336,15 @@
      "notes": "",
      "link": "",
      "done": true,
-     "attachments": []
+     "attachments": [
+      {
+       "id": "uploads/mwi75b4es1rp7.pdf",
+       "path": "uploads/mwi75b4es1rp7.pdf",
+       "sha": "db0893c03604246d5498a7d1b995f782cae7b7f0",
+       "name": "A place I visited and liked so much (1).pdf",
+       "mime": "application/pdf"
+      }
+     ]
     },
     {
      "id": "s-2",
